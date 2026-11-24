@@ -77,7 +77,7 @@ function render(res){
 function detail(w){
   const d=$('detail');
   const m={correct:'صح ✔',close:'قريب من الصح',tashkeel:'الحروف صح بس التشكيل (الحركات) مختلف',wrong:'غلط',missing:'اتنسى (ما اتسمعش)',pending:'لسه'}[w.status];
-  d.hidden=false;d.innerHTML=`<b>${w.text}</b> : ${m}`+(w.heard?`<br>سمعت: <b>${w.heard}</b>`:'');
+  d.hidden=false;d.innerHTML=`<b>${w.text}</b> : ${m}`+(w.heard?`<br>سمعت: <b>${w.heard}</b>`:'')+(w.score!=null?`<br><small>درجة الثقة ${w.score.toFixed(1)} (الحد ${TH})</small>`:'');
   clearTimeout(detail.t);detail.t=setTimeout(()=>d.hidden=true,5000);
 }
 
@@ -94,9 +94,10 @@ function apply(final){
   words.forEach((w,i)=>{
     const x=r.words[i],s=sc[i];
     if(!final&&i>last){w.status='pending';w.heard='';return;}
-    w.status=x.status;w.heard=x.heard;
+    w.status=x.status;w.heard=x.heard;w.score=s?s.min:null;
     if(s){
       if(s.min>=TH){w.status='correct';w.heard='';}
+      else if(x.status==='close'&&s.min>=-6){w.status='correct';w.heard='';}
       else if(x.status==='correct'){w.status=vowelMismatch(w.text,x.heard)?'tashkeel':'correct';}
       else if(x.status!=='missing'&&s.minLetter>=TH&&s.minMark<TH){w.status='tashkeel';}
     } else if(x.status==='correct'&&vowelMismatch(w.text,x.heard)) w.status='tashkeel';
@@ -135,7 +136,7 @@ function enqueue(pcm){
 }
 
 // ---- recording ----
-let ctx,stream,proc,src,buf=[],bufLen=0,speech=false,silentFor=0,recRate=48000;
+let ctx,stream,proc,src,buf=[],bufLen=0,speech=false,silentFor=0,recRate=48000,pre=[],hist=[],fullRec=[];
 function resample(f32,from,to){
   if(from===to) return f32;
   const r=from/to,n=Math.floor(f32.length/r),o=new Float32Array(n);
@@ -149,19 +150,26 @@ function flush(){
   enqueue(resample(all,recRate,16000));
 }
 async function start(){
-  try{stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:false,noiseSuppression:false,autoGainControl:true}});}
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});}
   catch(e){status('لازم تسمح بالميكروفون');return;}
   show2();
   ctx=new (window.AudioContext||window.webkitAudioContext)();recRate=ctx.sampleRate;
   src=ctx.createMediaStreamSource(stream);proc=ctx.createScriptProcessor(4096,1,1);
+  fullRec=[];pre=[];hist=[];buf=[];bufLen=0;speech=false;silentFor=0;
   proc.onaudioprocess=ev=>{
     const d=new Float32Array(ev.inputBuffer.getChannelData(0));
+    fullRec.push(d);
     let e=0;for(let i=0;i<d.length;i++)e+=d[i]*d[i];e=Math.sqrt(e/d.length);
     const dur=d.length/recRate;
-    if(e>0.015){speech=true;silentFor=0;}else silentFor+=dur;
-    if(speech||bufLen){buf.push(d);bufLen+=d.length;}
-    if(speech&&silentFor>=0.45&&bufLen/recRate>1.0) flush();
-    else if(bufLen/recRate>=12) flush();
+    hist.push(e);if(hist.length>60)hist.shift();
+    const floor=hist.slice().sort((x,y)=>x-y)[Math.floor(hist.length*0.2)];
+    const thr=Math.max(0.005,floor*2.5);
+    if(e>thr){speech=true;silentFor=0;}else silentFor+=dur;
+    if(speech){if(!bufLen){for(const p of pre){buf.push(p);bufLen+=p.length;}pre=[];}buf.push(d);bufLen+=d.length;}
+    else{pre.push(d);if(pre.length>4)pre.shift();}
+    const len=bufLen/recRate;
+    if(speech&&silentFor>=0.5&&len>1.0) flush();
+    else if(len>=18) flush();
   };
   src.connect(proc);proc.connect(ctx.destination);
   live=true;$('rec').textContent='⏹ وقّف';$('rec').classList.add('on');status('🎙️ بيسمع…');
@@ -174,6 +182,15 @@ async function stop(){
   await queue;finalized=true;apply(true);status('جاهز ✔');
 }
 $('rec').onclick=()=>live?stop():start();
+$('save').onclick=()=>{
+  if(!fullRec.length){status('مفيش تسجيل لسه');return;}
+  const n=fullRec.reduce((q,b)=>q+b.length,0),all=new Float32Array(n);let o=0;for(const b of fullRec){all.set(b,o);o+=b.length;}
+  const pcm=resample(all,recRate,16000),v=new DataView(new ArrayBuffer(44+pcm.length*2));
+  const w=(p,t)=>{for(let i=0;i<t.length;i++)v.setUint8(p+i,t.charCodeAt(i));};
+  w(0,'RIFF');v.setUint32(4,36+pcm.length*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,16000,true);v.setUint32(28,32000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,pcm.length*2,true);
+  for(let i=0;i<pcm.length;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,pcm[i]))*32767,true);
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([v],{type:'audio/wav'}));a.download='tasmee.wav';a.click();
+};
 
 // ---- audio file (for testing / checking a recording) ----
 $('file').onchange=async ev=>{
