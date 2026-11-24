@@ -80,8 +80,18 @@ async function transcribe(pcm){
   const m=await loadModel();
   let e=0;for(let i=0;i<pcm.length;i+=16)e+=pcm[i]*pcm[i];e/=pcm.length/16;
   if(e<1e-6) return '';
-  const out=await m(pcm,{num_beams:1,max_new_tokens:Math.min(200,Math.ceil(pcm.length/16000*8)+12)});
-  return out.text||'';
+  const t0=performance.now();
+  const fe=m.processor.feature_extractor;
+  const ns=Math.min(480000,Math.max(160000,Math.ceil(pcm.length/80000)*80000));
+  fe.config.n_samples=ns;fe.config.nb_max_frames=ns/160;
+  const f=(await fe(pcm)).input_features;
+  const t1=performance.now();
+  const out=await m.model.generate({inputs:f,num_beams:1,max_new_tokens:Math.min(200,Math.ceil(pcm.length/16000*8)+12)});
+  const t2=performance.now();
+  const text=m.tokenizer.decode(out.tolist?out.tolist()[0]:out[0],{skip_special_tokens:true}).trim();
+  const el=document.getElementById('timing');
+  if(el)el.textContent='⏱ صوت '+(pcm.length/16000).toFixed(1)+'ث | تجهيز '+Math.round(t1-t0)+' | فك '+Math.round(t2-t1)+' ms';
+  return text;
 }
 function enqueue(pcm){
   queue=queue.then(async()=>{
