@@ -1,4 +1,4 @@
-const C='tasme3-v2';
+const C="tasme3-v3";
 const SHELL=['./','index.html','app.js','core.js','style.css','manifest.json','icon.svg','q0.json','q1.json','q2.json','q3.json','q4.json','q5.json','q6.json'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==C&&x.startsWith('tasme3')).map(x=>caches.delete(x)))).then(()=>self.clients.claim()));});
