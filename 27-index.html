@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f3d2e">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<title>تسميع</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>تسميع القرآن</h1><div id="status">جاري التجهيز…</div></header>
+<section id="pick">
+  <label>السورة <select id="surah"></select></label>
+  <label>من آية <input id="from" type="number" min="1" value="1"></label>
+  <label>إلى آية <input id="to" type="number" min="1" value="1"></label>
+  <label class="chk"><input id="hidden" type="checkbox"> إخفاء النص (تسميع من الحفظ)</label>
+  <button id="load">اعرض</button>
+</section>
+<main id="text" aria-live="polite"></main>
+<div id="summary"></div>
+<div id="legend">🟢 صح · 🟡 قريب · 🟠 تشكيل غلط · 🔴 كلمة غلط أو ناقصة</div>
+<footer>
+  <button id="rec">🎙️ ابدأ التسميع</button>
+  <label class="file">ملف صوتي <input id="file" type="file" accept="audio/*" hidden></label>
+  <button id="reset" class="sec">إعادة</button>
+</footer>
+<div id="detail" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
